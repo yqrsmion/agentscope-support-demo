@@ -33,6 +33,21 @@ mvn spring-boot:run
 
 4. 浏览器打开 `http://localhost:8080`，或运行工程根目录 `requests.http`（1-7 条）。
 
+## 效果预览
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/rag-function-calling.png" alt="RAG、function calling" width="280"></td>
+    <td align="center"><img src="docs/images/mcp-function-calling.png" alt="MCP、function calling" width="280"></td>
+    <td align="center"><img src="docs/images/model-switching.png" alt="模型切换" width="280"></td>
+  </tr>
+  <tr>
+    <td align="center">RAG、function calling</td>
+    <td align="center">MCP、function calling</td>
+    <td align="center">模型切换</td>
+  </tr>
+</table>
+
 ## 组件结构
 
 | 组件 | 职责 |
