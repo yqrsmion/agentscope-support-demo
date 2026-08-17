@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentScope 工单助手 Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, "Microsoft YaHei", sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #f5f6f8;
+        }
+        header {
+            padding: 12px 20px;
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        header h1 { font-size: 16px; margin: 0; }
+        #session-info { font-size: 12px; color: #888; margin-right: 8px; }
+        #new-session {
+            font-size: 12px;
+            padding: 4px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .msg {
+            max-width: 76%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .msg p { margin: 2px 0; }
+        .msg ul, .msg ol { margin: 4px 0; padding-left: 22px; }
+        .msg code {
+            background: #f3f4f6;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .user { align-self: flex-end; background: #2563eb; color: #fff; }
+        .assistant { align-self: flex-start; background: #fff; border: 1px solid #e5e7eb; }
+        .error { align-self: flex-start; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .meta { align-self: flex-start; font-size: 12px; color: #6b7280; }
+        #input-bar {
+            display: flex;
+            gap: 10px;
+            padding: 14px 20px;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+        }
+        #input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        #send {
+            padding: 10px 20px;
+            border: 0;
+            border-radius: 8px;
+            background: #2563eb;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #send:disabled { background: #93c5fd; cursor: not-allowed; }
+        .hint { font-size: 12px; color: #999; padding: 0 20px 10px; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>AgentScope 工单助手 Demo（ReAct + DeepSeek）</h1>
+    <div>
+        <span id="session-info"></span>
+        <button id="new-session">新会话</button>
+    </div>
+</header>
+<div id="messages">
+    <div class="msg assistant">你好，我是工单分析助手。可以试试：
+        ① "订单 10003 物流很久没更新，用户很生气，帮我分析这个工单"
+        ② "用MCP查一下订单 10001 的状态"
+        ③ "/model reasoner 用一句话解释熔断限流"</div>
+</div>
+<div id="input-bar">
+    <input id="input" placeholder="输入消息…" />
+    <button id="send">发送</button>
+</div>
+<div class="hint">AgentScope ReAct 推理循环：文本增量实时拼接，工具调用单独展示。</div>
+
+<script src="vendor/marked.min.js"></script>
+<script>
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const sessionInfoEl = document.getElementById('session-info');
+    const newSessionBtn = document.getElementById('new-session');
+
+    let conversationId = localStorage.getItem('agentscope-chat-id') || genId();
+    localStorage.setItem('agentscope-chat-id', conversationId);
+    sessionInfoEl.textContent = '会话ID: ' + conversationId;
+
+    function genId() {
+        return 'web-' + Date.now().toString(36);
+    }
+
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function render(text) {
+        const safe = escapeHtml(text);
+        if (window.marked) {
+            return marked.parse(safe, { breaks: true });
+        }
+        return safe.replace(/\n/g, '<br>');
+    }
+
+    function addMsg(text, kind) {
+        const div = document.createElement('div');
+        div.className = 'msg ' + kind;
+        div.textContent = text;
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return div;
+    }
+
+    function addMeta(text) {
+        const div = document.createElement('div');
+        div.className = 'meta';
+        div.textContent = text;
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function send() {
+        const message = inputEl.value.trim();
+        if (!message) return;
+        inputEl.value = '';
+        addMsg(message, 'user');
+        const reply = addMsg('', 'assistant');
+        let raw = '';
+        sendBtn.disabled = true;
+
+        const url = '/api/chat/stream?conversationId=' + encodeURIComponent(conversationId)
+            + '&message=' + encodeURIComponent(message);
+        const es = new EventSource(url);
+
+        es.addEventListener('chunk', (e) => {
+            raw += e.data;
+            reply.innerHTML = render(raw);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
+        es.addEventListener('tool', (e) => {
+            addMeta('🔧 调用工具: ' + e.data);
+        });
+        es.addEventListener('model', (e) => {
+            addMeta('模型: ' + e.data);
+        });
+        es.addEventListener('rag', (e) => {
+            addMeta('📚 RAG: ' + e.data);
+        });
+        es.addEventListener('error', (e) => {
+            reply.classList.add('error');
+            reply.innerHTML = render(raw + (e.data || '（连接中断，请重试）'));
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
+        es.addEventListener('done', () => {
+            es.close();
+            sendBtn.disabled = false;
+            inputEl.focus();
+        });
+    }
+
+    sendBtn.addEventListener('click', send);
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') send();
+    });
+    newSessionBtn.addEventListener('click', () => {
+        conversationId = genId();
+        localStorage.setItem('agentscope-chat-id', conversationId);
+        sessionInfoEl.textContent = '会话ID: ' + conversationId;
+        messagesEl.innerHTML = '';
+        addMsg('新会话已开始：' + conversationId, 'assistant');
+    });
+</script>
+</body>
+</html>

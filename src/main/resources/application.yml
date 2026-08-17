@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: agentscope-support-demo
+
+server:
+  port: 8080
+
+app:
+  rag:
+    doc-path: docs/support-policy.md
+    top-k: 2
+  agentscope:
+    state-dir: ./data/agentscope-state
+  mcp:
+    enabled: true
+    script: ./mcp/mcp-order-server.js
+
+logging:
+  level:
+    io.agentscope: INFO
