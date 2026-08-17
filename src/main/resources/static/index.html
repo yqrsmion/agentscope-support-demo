@@ -127,13 +127,13 @@
         return text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
 
     function render(text) {
-        const safe = escapeHtml(text);
+        // 保留行首 > 以便 marked 解析引用块；将单个 ~ 换成全角，避免 3~7 天被当成删除线
+        const safe = escapeHtml(text).replace(/~/g, '～');
         if (window.marked) {
             return marked.parse(safe, { breaks: true });
         }
