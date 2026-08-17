@@ -132,8 +132,15 @@
     }
 
     function render(text) {
+        // LLM 输出的 markdown 常缺空格（如 ###二、 -**分类：**），先规范化再解析
+        const normalized = text
+            .replace(/(^|\n)(#{1,6})([^#\s])/g, '$1$2 $3')
+            .replace(/(^|\n)-([^\s-])/g, '$1- $2')
+            .replace(/(^|\n)(\d{1,3}\.)([^\s\d])/g, '$1$2 $3')
+            // 修复"**分类：**物流类"这类：开头 ** 前是空格/行首、闭合 ** 后紧跟中文时补空格
+            .replace(/(^|\s)\*\*([^*\n]+?)\*\*(?=[\p{L}\p{N}])/gu, '$1**$2** ');
         // 保留行首 > 以便 marked 解析引用块；将单个 ~ 换成全角，避免 3~7 天被当成删除线
-        const safe = escapeHtml(text).replace(/~/g, '～');
+        const safe = escapeHtml(normalized).replace(/~/g, '～');
         if (window.marked) {
             return marked.parse(safe, { breaks: true });
         }
