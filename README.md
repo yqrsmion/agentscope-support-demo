@@ -13,7 +13,7 @@ AgentScope Java 2.0 负责 Agent 编排，用"智能客服/工单分析"场景�
 - 模型路由与降级：`chat / reasoner / flash / pro` 别名切换（`&model=` 或 `/model` 命令），
   主模型失败自动降级到默认模型（fallbackModel）；
 - 简化版 RAG：本地文档切块检索并注入上下文（无向量库、零依赖）；
-- 网页界面：`http://localhost:8080`（SSE 流式聊天，工具调用单独展示）；
+- 网页界面：`http://localhost:8081`（SSE 流式聊天，工具调用单独展示）；
 - 单元测试：10 个用例，`mvn test` 全绿。
 
 ## 运行
@@ -31,7 +31,7 @@ $env:DEEPSEEK_API_KEY = "你的 DeepSeek API Key"
 mvn spring-boot:run
 ```
 
-4. 浏览器打开 `http://localhost:8080`，或运行工程根目录 `requests.http`（1-7 条）。
+4. 浏览器打开 `http://localhost:8081`，或运行工程根目录 `requests.http`（1-7 条）。
 
 ## 效果预览
 

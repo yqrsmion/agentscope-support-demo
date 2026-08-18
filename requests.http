@@ -1,27 +1,27 @@
 ### 1. 基础对话
-GET http://localhost:8080/api/chat?conversationId=demo-1&message=你好
+GET http://localhost:8081/api/chat?conversationId=demo-1&message=你好
 Accept: application/json
 
 ### 2. 工单分析（触发工具调用，流式）
-GET http://localhost:8080/api/chat/stream?conversationId=demo-1&message=订单 10003 物流很久没更新，用户很生气，帮我分析这个工单
+GET http://localhost:8081/api/chat/stream?conversationId=demo-1&message=订单 10003 物流很久没更新，用户很生气，帮我分析这个工单
 Accept: text/event-stream
 
 ### 3. 模型切换：reasoner
-GET http://localhost:8080/api/chat?conversationId=demo-1&message=用一句话解释熔断限流&model=reasoner
+GET http://localhost:8081/api/chat?conversationId=demo-1&message=用一句话解释熔断限流&model=reasoner
 Accept: application/json
 
 ### 4. 简化版 RAG：问知识库政策（响应带 rag 字段）
-GET http://localhost:8080/api/chat?conversationId=demo-1&message=质量问题的退货运费由谁承担？
+GET http://localhost:8081/api/chat?conversationId=demo-1&message=质量问题的退货运费由谁承担？
 Accept: application/json
 
 ### 5. 记忆持久化：先让模型记住名字（随后重启服务，再执行第 6 条）
-GET http://localhost:8080/api/chat?conversationId=persist-1&message=我叫yqr，请记住我的名字
+GET http://localhost:8081/api/chat?conversationId=persist-1&message=我叫yqr，请记住我的名字
 Accept: application/json
 
 ### 6. 记忆持久化：重启后追问（同一 conversationId，模型应还记得）
-GET http://localhost:8080/api/chat?conversationId=persist-1&message=我叫什么名字？
+GET http://localhost:8081/api/chat?conversationId=persist-1&message=我叫什么名字？
 Accept: application/json
 
 ### 7. MCP：让模型通过 MCP 工具查订单
-GET http://localhost:8080/api/chat?conversationId=demo-1&message=用MCP查一下订单 10001 的状态
+GET http://localhost:8081/api/chat?conversationId=demo-1&message=用MCP查一下订单 10001 的状态
 Accept: application/json
