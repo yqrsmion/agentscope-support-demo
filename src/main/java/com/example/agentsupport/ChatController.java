@@ -1,8 +1,12 @@
 package com.example.agentsupport;
 
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.TextBlockDeltaEvent;
+import io.agentscope.core.event.ToolCallStartEvent;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -25,10 +29,16 @@ public class ChatController {
 
     private final AgentService agentService;
     private final SimpleRetriever retriever;
+    private final MultiAgentService multiAgentService;
+    private final NativeMultiAgentService nativeMultiAgentService;
 
-    public ChatController(AgentService agentService, SimpleRetriever retriever) {
+    public ChatController(AgentService agentService, SimpleRetriever retriever,
+                          MultiAgentService multiAgentService,
+                          NativeMultiAgentService nativeMultiAgentService) {
         this.agentService = agentService;
         this.retriever = retriever;
+        this.multiAgentService = multiAgentService;
+        this.nativeMultiAgentService = nativeMultiAgentService;
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -36,6 +46,21 @@ public class ChatController {
             @RequestParam String message,
             @RequestParam(defaultValue = "demo-session") String conversationId,
             @RequestParam(required = false) String model) {
+        String trimmed = message == null ? "" : message.trim();
+
+        if (NativeMultiAgentService.isNativeCommand(trimmed)) {
+            return multiStream(NativeMultiAgentService.stripNativeCommand(trimmed), conversationId,
+                    "deepseek-chat · 原生多Agent",
+                    "Harness agent_spawn 派发子 Agent 中…",
+                    nativeMultiAgentService::stream);
+        }
+        if (MultiAgentService.isMultiCommand(trimmed)) {
+            return multiStream(MultiAgentService.stripMultiCommand(trimmed), conversationId,
+                    "deepseek-chat · 多Agent编排",
+                    "订单/政策子 Agent 并行查询中…",
+                    multiAgentService::stream);
+        }
+
         AgentService.ParsedCommand command = AgentService.parseCommand(message);
         String realMessage = command.message();
         String modelAlias = model != null ? model : command.modelAlias();
@@ -56,16 +81,7 @@ public class ChatController {
                         hitCount > 0
                                 ? Mono.just(ServerSentEvent.builder("命中" + hitCount + "个知识块").event("rag").build())
                                 : Flux.empty(),
-                        agentService.stream(prompt, "demo-user", conversationId, modelAlias)
-                                .flatMap(event -> switch (event.getType()) {
-                                    case TEXT_BLOCK_DELTA -> Mono.just(ServerSentEvent.builder(
-                                            ((io.agentscope.core.event.TextBlockDeltaEvent) event).getDelta())
-                                            .event("chunk").build());
-                                    case TOOL_CALL_START -> Mono.just(ServerSentEvent.builder(
-                                            ((io.agentscope.core.event.ToolCallStartEvent) event).getToolCallName())
-                                            .event("tool").build());
-                                    default -> Flux.empty();
-                                }))
+                        mapAgentEvents(agentService.stream(prompt, "demo-user", conversationId, modelAlias)))
                 .concatWithValues(ServerSentEvent.builder("[DONE]").event("done").build())
                 .timeout(TIMEOUT)
                 .onErrorResume(error -> {
@@ -82,6 +98,17 @@ public class ChatController {
             @RequestParam String message,
             @RequestParam(defaultValue = "demo-session") String conversationId,
             @RequestParam(required = false) String model) {
+        String trimmed = message == null ? "" : message.trim();
+
+        if (NativeMultiAgentService.isNativeCommand(trimmed)) {
+            return multiChat(NativeMultiAgentService.stripNativeCommand(trimmed), conversationId,
+                    "multi-native", "deepseek-chat", nativeMultiAgentService::call);
+        }
+        if (MultiAgentService.isMultiCommand(trimmed)) {
+            return multiChat(MultiAgentService.stripMultiCommand(trimmed), conversationId,
+                    "multi", "deepseek-chat", multiAgentService::call);
+        }
+
         AgentService.ParsedCommand command = AgentService.parseCommand(message);
         String realMessage = command.message();
         String modelAlias = model != null ? model : command.modelAlias();
@@ -109,5 +136,64 @@ public class ChatController {
                             "error", "服务繁忙，请稍后再试",
                             "detail", error.getMessage()));
                 });
+    }
+
+    private Flux<ServerSentEvent<String>> multiStream(
+            String realMessage, String conversationId,
+            String modelLabel, String statusText,
+            BiFunction<String, String, Flux<AgentEvent>> streamer) {
+        if (!StringUtils.hasText(realMessage)) {
+            return Flux.just(
+                    ServerSentEvent.builder("命令格式：/multi 或 /multi-native 客服问题").event("error").build(),
+                    ServerSentEvent.builder("[DONE]").event("done").build());
+        }
+        return Flux.concat(
+                        Mono.just(ServerSentEvent.builder(modelLabel).event("model").build()),
+                        Mono.just(ServerSentEvent.builder(statusText).event("status").build()),
+                        mapAgentEvents(streamer.apply(realMessage, conversationId)))
+                .concatWithValues(ServerSentEvent.builder("[DONE]").event("done").build())
+                .timeout(TIMEOUT)
+                .onErrorResume(error -> {
+                    log.warn("multi stream error: {}", error.getMessage());
+                    return Flux.just(
+                            ServerSentEvent.builder("多 Agent 调用失败：" + error.getMessage()).event("error").build(),
+                            ServerSentEvent.builder("[DONE]").event("done").build());
+                });
+    }
+
+    private Mono<Map<String, String>> multiChat(
+            String realMessage, String conversationId,
+            String mode, String modelLabel,
+            BiFunction<String, String, String> caller) {
+        if (!StringUtils.hasText(realMessage)) {
+            return Mono.just(Map.of("conversationId", conversationId,
+                    "error", "命令格式：/multi 或 /multi-native 客服问题"));
+        }
+        return Mono.fromCallable(() -> caller.apply(realMessage, conversationId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .timeout(TIMEOUT)
+                .map(reply -> Map.of(
+                        "conversationId", conversationId,
+                        "model", modelLabel,
+                        "rag", "off",
+                        "mode", mode,
+                        "reply", reply))
+                .onErrorResume(error -> {
+                    log.warn("multi chat error: {}", error.getMessage());
+                    return Mono.just(Map.of(
+                            "conversationId", conversationId,
+                            "error", "多 Agent 调用失败，请稍后再试",
+                            "detail", error.getMessage()));
+                });
+    }
+
+    private Flux<ServerSentEvent<String>> mapAgentEvents(Flux<AgentEvent> events) {
+        return events.flatMap(event -> switch (event.getType()) {
+            case TEXT_BLOCK_DELTA -> Mono.just(ServerSentEvent.builder(
+                    ((TextBlockDeltaEvent) event).getDelta()).event("chunk").build());
+            case TOOL_CALL_START -> Mono.just(ServerSentEvent.builder(
+                    ((ToolCallStartEvent) event).getToolCallName()).event("tool").build());
+            default -> Flux.empty();
+        });
     }
 }

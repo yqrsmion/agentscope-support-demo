@@ -99,13 +99,15 @@
     <div class="msg assistant">你好，我是工单分析助手。可以试试：
         ① "订单 10003 物流很久没更新，用户很生气，帮我分析这个工单"
         ② "用MCP查一下订单 10001 的状态"
-        ③ "/model reasoner 用一句话解释熔断限流"</div>
+        ③ "/model reasoner 用一句话解释熔断限流"
+        ④ "/multi 用户投诉订单 10003 物流很久没更新，帮我分析这个工单"（多 Agent 手写编排）
+        ⑤ "/multi-native 用户投诉订单 10003 物流很久没更新，帮我分析这个工单"（框架原生 agent_spawn）</div>
 </div>
 <div id="input-bar">
     <input id="input" placeholder="输入消息…" />
     <button id="send">发送</button>
 </div>
-<div class="hint">AgentScope ReAct 推理循环：文本增量实时拼接，工具调用单独展示。</div>
+<div class="hint">AgentScope ReAct 推理循环：文本增量实时拼接，工具调用单独展示。④/⑤ 是多 Agent 编排对比演示。</div>
 
 <script src="vendor/marked.min.js"></script>
 <script>
@@ -156,12 +158,17 @@
         return div;
     }
 
-    function addMeta(text) {
+    function addMeta(text, anchor) {
         const div = document.createElement('div');
         div.className = 'meta';
         div.textContent = text;
-        messagesEl.appendChild(div);
+        if (anchor) {
+            anchor.insertAdjacentElement('beforebegin', div);
+        } else {
+            messagesEl.appendChild(div);
+        }
         messagesEl.scrollTop = messagesEl.scrollHeight;
+        return div;
     }
 
     function send() {
@@ -171,6 +178,7 @@
         addMsg(message, 'user');
         const reply = addMsg('', 'assistant');
         let raw = '';
+        let statusEl = null;
         sendBtn.disabled = true;
 
         const url = '/api/chat/stream?conversationId=' + encodeURIComponent(conversationId)
@@ -183,13 +191,16 @@
             messagesEl.scrollTop = messagesEl.scrollHeight;
         });
         es.addEventListener('tool', (e) => {
-            addMeta('🔧 调用工具: ' + e.data);
+            addMeta('🔧 调用工具: ' + e.data, reply);
         });
         es.addEventListener('model', (e) => {
-            addMeta('模型: ' + e.data);
+            addMeta('模型: ' + e.data, reply);
         });
         es.addEventListener('rag', (e) => {
-            addMeta('📚 RAG: ' + e.data);
+            addMeta('📚 RAG: ' + e.data, reply);
+        });
+        es.addEventListener('status', (e) => {
+            statusEl = addMeta('⏳ ' + e.data, reply);
         });
         es.addEventListener('error', (e) => {
             reply.classList.add('error');
@@ -198,6 +209,9 @@
         });
         es.addEventListener('done', () => {
             es.close();
+            if (statusEl) {
+                statusEl.textContent = '✓ 子 Agent 编排完成';
+            }
             sendBtn.disabled = false;
             inputEl.focus();
         });

@@ -39,6 +39,12 @@
             <artifactId>agentscope-core</artifactId>
             <version>${agentscope.version}</version>
         </dependency>
+        <!-- 方案 A：原生 HarnessAgent 多 Agent 编排 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
         <!-- DeepSeek 一等公民支持：OpenAI 兼容模型栈 + deepseek: 前缀 -->
         <dependency>
             <groupId>io.agentscope</groupId>
