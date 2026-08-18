@@ -25,3 +25,11 @@ Accept: application/json
 ### 7. MCP：让模型通过 MCP 工具查订单
 GET http://localhost:8081/api/chat?conversationId=demo-1&message=用MCP查一下订单 10001 的状态
 Accept: application/json
+
+### 8. 多 Agent 编排（手写编排）：/multi 命令
+GET http://localhost:8081/api/chat?conversationId=demo-1&message=/multi 用户投诉订单 10003 物流很久没更新，帮我分析这个工单
+Accept: application/json
+
+### 9. 多 Agent 编排（框架原生）：/multi-native 命令
+GET http://localhost:8081/api/chat?conversationId=demo-1&message=/multi-native 用户投诉订单 10003 物流很久没更新，帮我分析这个工单
+Accept: application/json
